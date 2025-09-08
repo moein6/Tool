@@ -1,54 +1,35 @@
 #pragma once
 #include <fstream>
+#include <string>
 #include <iostream>
+#include <string_view>
 
+//	File control v 2.1
 
 // Creating files in "fstream" mood.
-
-//	File control v2
 // If you need help just open Help() function.
+
 class File : public std::fstream
 {
 public:
-	//	open file and if it doesn't exist than create it.
-	File(const char* File_Name, const bool is_Binary) {
 
-	again: {
-
-		if (is_Binary) {
-			this->open(File_Name, std::ios::in | std::ios::out | std::ios::binary);
-
-			//	check if file isn't open and need to be create.
-			if (!this->is_open()) {
-
-				std::string newFileName = File_Name;
-				std::ofstream tempFile(newFileName, std::ios::binary);
-				tempFile.close();
-
-				goto again;
-			}//	end if
-		}
-		else {
-			//	check and open file in regular mode
-			this->open(File_Name, std::ios::in | std::ios::out | std::ios::app);
-
-			if (!this->is_open()) {
-				this->open(File_Name, std::ios::out | std::ios::app);
-				goto again;
-			}//	end if
-		}//	end else
-		
-		}//	end lable
-	}//	end constructor
-	~File() {
-		this->close();
+	File(const std::string_view &filename, const bool &is_Binary) {
+		OpenFile(filename, is_Binary);
 	}
+	
+	File(const char* File_Name, const bool is_Binary) {
+		OpenFile(std::string_view(File_Name), is_Binary);
+	}//	end 
+
+	~File() {
+		//	do nothing
+	}//	end distructor
 
 	//	Your class should contain this function : unsigned int Get_ID().
 	template<typename Ty>	friend File& operator <<= (File& file, Ty& value) {
 		file.seekp(sizeof(Ty) * (__int64)(value.Get_ID()));
 
-		file.write((char*)&value, sizeof(Ty));
+		file.write(reinterpret_cast<char*> (&value), sizeof(Ty));
 		return file;
 	}
 
@@ -56,7 +37,7 @@ public:
 	template<typename Ty, typename Pos>	friend File& operator <<= (File& file, std::pair<Ty, Pos>& var) {
 		file.seekp(sizeof(Ty) * (__int64)(var.second));
 
-		file.write((char*)&var.first, sizeof(Ty));
+		file.write(reinterpret_cast<char*>(&var.first), sizeof(Ty));
 
 		return file;
 	}
@@ -121,4 +102,37 @@ public:
 		std::cout << "5 - operator <<= (with std::pair) : this is used to save data in a specific location that the object does not prvides a Get_ID() function.";
 		std::cout << "6 - operator >>= (with std::pair) : this is used to read data in a specific location that the object does not prvides a Get_ID() function.";
 	}
+private:
+	void OpenFile(std::string_view filename, bool is_binary) {
+		m_FilePath = std::string(filename);
+
+		auto mode = std::ios::in | std::ios::out |
+			(is_binary ? std::ios::binary : std::ios::app);
+			
+		open(m_FilePath, mode);
+
+		if (!is_open()) {
+			// Try to create file
+			auto create_mode = std::ios::out |
+				(is_binary ? std::ios::binary : std::ios::app);
+
+			std::ofstream creator(m_FilePath, create_mode);
+
+			if (!creator.is_open()) {
+				const auto err = std::string("Can not create file ") + m_FilePath;
+				throw std::runtime_error(err);
+			}
+			
+			creator.close();
+			
+			// Reopen
+			open(m_FilePath, mode);
+		}//	end if
+
+	}//	end function
+
+private:
+	std::string m_FilePath;
+	
+
 };//	end class

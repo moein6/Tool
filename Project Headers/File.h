@@ -4,117 +4,110 @@
 #include <iostream>
 #include <string_view>
 
-//	File control v 2.1
+//	File control v 2.2
 
 // Creating files in "fstream" mood.
-// If you need help just open Help() function.
+
+enum class Mode
+{
+	Text,
+	Binary
+};
 
 class File : public std::fstream
 {
 public:
 
-	File(const std::string_view &filename, const bool &is_Binary) {
-		OpenFile(filename, is_Binary);
+	File(const std::string_view &filename, const Mode mode) {
+		OpenFile(filename, mode);
 	}
 	
-	File(const char* File_Name, const bool is_Binary) {
-		OpenFile(std::string_view(File_Name), is_Binary);
+	File(const char* File_Name, const Mode mode) {
+		OpenFile(std::string_view(File_Name), mode);
 	}//	end 
 
 	~File() {
-		//	do nothing
+		if (this->is_open())
+			close();
 	}//	end distructor
 
-	//	Your class should contain this function : unsigned int Get_ID().
-	template<typename Ty>	friend File& operator <<= (File& file, Ty& value) {
-		file.seekp(sizeof(Ty) * (__int64)(value.Get_ID()));
 
-		file.write(reinterpret_cast<char*> (&value), sizeof(Ty));
-		return file;
+
+	//	Save string
+	void Serialize(const std::string& str) {
+		auto size = str.size();
+		write(reinterpret_cast<char*>(&size), sizeof(size));
+		write(str.data(), size);
 	}
 
-	//	Save data useing pair
-	template<typename Ty, typename Pos>	friend File& operator <<= (File& file, std::pair<Ty, Pos>& var) {
-		file.seekp(sizeof(Ty) * (__int64)(var.second));
 
-		file.write(reinterpret_cast<char*>(&var.first), sizeof(Ty));
-
-		return file;
+	template <typename ClassType>
+	void m_write_at_Index(const ClassType &obj , const int &index) {
+		seekp(sizeof(ClassType) * index);
+		this << obj;
+	}
+	
+	template <typename Ty>
+	void m_write(const Ty& value) {
+		this << value;
 	}
 
 	//	saving object in txt files.
 	template<typename Ty>	friend File& operator << (File& file, const Ty& value) {
-		file.write((char*)&value, sizeof(Ty));
-
+		if (!file.write(reinterpret_cast<char*>(&value), sizeof(Ty)))
+			throw std::ios_base::failure("writing faild " + m_FilePath);
 		return file;
 	}
+	
 
-	//	specialy for saving string : save all of the string in file
-	friend File& operator << (File& file, const std::string val) {
-		for (auto ch : val)
-			file << ch;
-
-		return file;
-	}
-
-	//	used spicialy for const char*.
-	friend File& operator << (File& file, const char*& data) {
-		file << data;
-	}
 
 	//	=-----------------------------	 Read	--------------------------------------------------------------------------
 
-		//	searching in binary file.
-	template<typename Ty>	friend File& operator >>= (File& file, Ty& var) {
-		file.seekg(sizeof(Ty) * (__int64)(var.Get_ID()));
-		file.read((char*)&var, sizeof(Ty));
+	//	Read string
+	void Deserialize(std::string& str) {
+		size_t size = 0;
+		std::string tempstr;
+
+		read(reinterpret_cast<char*>(&size), sizeof(size));
+
+		tempstr.resize(size);
+
+		read(tempstr.data(), size);
+		str = tempstr;
+	}
+
+	//	write at index
+	template <typename Ty> 
+	void m_read_at_index(Ty &obj , const int &index) {
+		seekg(sizeof(Ty) * index);
+		this >> obj;
+	}
+
+	template <typename Ty> 
+	void m_read(Ty& obj) {
+		this >> obj;
+	}
+
+	template<typename Ty>	friend File& operator >> (File& file, Ty& var) {
+		if (!file.read(reinterpret_cast<char*>(&var), sizeof(Ty)))
+			throw std::ios_base::failure("Reading failed " + m_FilePath);
 		return file;
 	}
 
-	//	Find data useing pair
-	template<typename Ty, typename Pos>  friend File& operator >>= (File& file, std::pair<Ty, Pos>& var) {
-		file.seekg(sizeof(Ty) * (var.second));
-		file.read((char*)&var.first, sizeof(Ty));
-		return file;
-	}
-
-	//	read all files.
-	template<typename Ty>	friend File& operator >> (File& file, Ty& value) {
-		file.read((char*)&value, sizeof(Ty));
-		return file;
-	}
-
-	//	specialy for reading string : Put all file in string
-	friend File& operator >> (File& file, std::string& val) {
-		char ch;
-
-		while (file >> ch)
-			val.push_back(ch);
-
-		return file;
-	}
-
-	void Help()const {
-		std::cout << "1 - operator << : used for saving in files in regular way not Binay.\n";
-		std::cout << "2 - operator <<= : used for savin in files in Binary mode (special location in file).\n";
-		std::cout << "3 - operator >>= : used for searching in Binary files (Read a specific location).\n";
-		std::cout << "4 - Operator >> : used for reading all of the file in all modes.\n";
-		std::cout << "5 - operator <<= (with std::pair) : this is used to save data in a specific location that the object does not prvides a Get_ID() function.";
-		std::cout << "6 - operator >>= (with std::pair) : this is used to read data in a specific location that the object does not prvides a Get_ID() function.";
-	}
 private:
-	void OpenFile(std::string_view filename, bool is_binary) {
+	void OpenFile(std::string_view filename, const Mode mode) {
 		m_FilePath = std::string(filename);
+		auto usermode = mode == Mode::Binary ? std::ios::binary : std::ios::app;
+		
 
-		auto mode = std::ios::in | std::ios::out |
-			(is_binary ? std::ios::binary : std::ios::app);
+		auto Openmode = std::ios::in | std::ios::out | usermode;
 			
-		open(m_FilePath, mode);
+		open(m_FilePath, Openmode);
 
 		if (!is_open()) {
 			// Try to create file
-			auto create_mode = std::ios::out |
-				(is_binary ? std::ios::binary : std::ios::app);
+			
+			auto create_mode = std::ios::out | usermode;
 
 			std::ofstream creator(m_FilePath, create_mode);
 
@@ -126,13 +119,14 @@ private:
 			creator.close();
 			
 			// Reopen
-			open(m_FilePath, mode);
+			open(m_FilePath, Openmode);
+			return;
 		}//	end if
 
 	}//	end function
 
 private:
 	std::string m_FilePath;
-	
+
 
 };//	end class
